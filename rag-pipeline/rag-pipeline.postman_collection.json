@@ -1,0 +1,230 @@
+{
+  "info": {
+    "name": "RAG Pipeline API",
+    "description": "Production-ready Retrieval-Augmented Generation API. Upload documents and ask questions — answers are grounded in your content.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Check connectivity to the metadata DB and vector DB."
+          },
+          "response": [
+            {
+              "name": "Healthy",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"ok\",\n  \"vector_db\": \"connected\",\n  \"metadata_db\": \"connected\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "item": [
+        {
+          "name": "Upload Document",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "",
+                  "description": "Select a PDF, DOCX, or TXT file to upload."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/documents/upload",
+              "host": ["{{base_url}}"],
+              "path": ["documents", "upload"]
+            },
+            "description": "Upload a document for processing. Supported types: PDF, DOCX, TXT."
+          },
+          "response": [
+            {
+              "name": "Upload Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"id\": 1,\n  \"filename\": \"report.pdf\",\n  \"page_count\": 12,\n  \"chunk_count\": 47,\n  \"file_size_kb\": 204.5,\n  \"status\": \"ready\",\n  \"upload_time\": \"2024-01-01T10:00:00\"\n}"
+            },
+            {
+              "name": "Unsupported File Type",
+              "status": "Bad Request",
+              "code": 400,
+              "body": "{\n  \"detail\": \"File type not supported. Upload PDF, DOCX, or TXT.\"\n}"
+            },
+            {
+              "name": "Document Limit Reached",
+              "status": "Bad Request",
+              "code": 400,
+              "body": "{\n  \"detail\": \"Maximum document limit of 20 reached.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "List All Documents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/documents/",
+              "host": ["{{base_url}}"],
+              "path": ["documents", ""]
+            },
+            "description": "Retrieve a list of all uploaded documents."
+          },
+          "response": [
+            {
+              "name": "Documents List",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"documents\": [\n    {\n      \"id\": 1,\n      \"filename\": \"report.pdf\",\n      \"page_count\": 12,\n      \"chunk_count\": 47,\n      \"file_size_kb\": 204.5,\n      \"status\": \"ready\",\n      \"upload_time\": \"2024-01-01T10:00:00\"\n    }\n  ],\n  \"total\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Single Document",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/documents/1",
+              "host": ["{{base_url}}"],
+              "path": ["documents", "1"]
+            },
+            "description": "Get metadata for a specific document by ID."
+          },
+          "response": [
+            {
+              "name": "Document Found",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"id\": 1,\n  \"filename\": \"report.pdf\",\n  \"page_count\": 12,\n  \"chunk_count\": 47,\n  \"file_size_kb\": 204.5,\n  \"status\": \"ready\",\n  \"upload_time\": \"2024-01-01T10:00:00\"\n}"
+            },
+            {
+              "name": "Not Found",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\n  \"detail\": \"Document not found.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Delete Document",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/documents/1",
+              "host": ["{{base_url}}"],
+              "path": ["documents", "1"]
+            },
+            "description": "Delete a document and its chunks from the database and vector store."
+          },
+          "response": [
+            {
+              "name": "Deleted",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"message\": \"Document deleted successfully.\"\n}"
+            },
+            {
+              "name": "Not Found",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\n  \"detail\": \"Document not found.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Query",
+      "item": [
+        {
+          "name": "Query Documents",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"What are the key findings of the report?\",\n  \"document_ids\": [1, 2]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/query",
+              "host": ["{{base_url}}"],
+              "path": ["query"]
+            },
+            "description": "Ask a question across uploaded documents. Optionally filter by document_ids. Omit document_ids to search all documents."
+          },
+          "response": [
+            {
+              "name": "Query Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"answer\": \"The key findings are...\",\n  \"sources\": [\n    {\n      \"document_id\": 1,\n      \"filename\": \"report.pdf\",\n      \"page_number\": 4,\n      \"chunk_preview\": \"First 200 characters of the chunk...\"\n    }\n  ]\n}"
+            },
+            {
+              "name": "Empty Question",
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "body": "{\n  \"detail\": \"Question cannot be empty.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Query All Documents",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"Summarize the main points across all documents.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/query",
+              "host": ["{{base_url}}"],
+              "path": ["query"]
+            },
+            "description": "Query all documents without specifying document_ids."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

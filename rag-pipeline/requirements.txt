@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+python-multipart
+sqlalchemy
+chromadb
+openai
+langchain
+langchain-text-splitters
+pymupdf
+python-docx
+python-dotenv
+pytest
+httpx

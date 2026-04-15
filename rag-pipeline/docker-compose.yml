@@ -1,0 +1,14 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./chroma_data:/app/chroma_data
+      - ./metadata.db:/app/metadata.db
+    env_file:
+      - .env
+    restart: unless-stopped
