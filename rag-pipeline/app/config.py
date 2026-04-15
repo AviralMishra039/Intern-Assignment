@@ -16,7 +16,7 @@ class Settings:
     MAX_DOCUMENTS: int = int(os.getenv("MAX_DOCUMENTS", "20"))
     CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "500"))
     CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "50"))
-    TOP_K_RESULTS: int = int(os.getenv("TOP_K_RESULTS", "5"))
+    TOP_K_RESULTS: int = int(os.getenv("TOP_K_RESULTS", "40"))
 
 
 settings = Settings()
