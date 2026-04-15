@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from sqlalchemy import text
 
 from app.config import settings
@@ -92,3 +93,12 @@ def health_check():
         vector_db=vector_status,
         metadata_db=metadata_status,
     )
+
+# ---------------------------------------------------------------------------
+# Root Redirect
+# ---------------------------------------------------------------------------
+
+@app.get("/", include_in_schema=False)
+def root():
+    """Redirect the base URL to the Swagger documentation."""
+    return RedirectResponse(url="/docs")
