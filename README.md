@@ -28,16 +28,35 @@ Services like GCP, AWS, Azure, etc. were not used as they were requiring credits
                    │  └─────────────┘  └────────────────────┘  │
                    │                                           │
                    │         ┌──────────────────┐              │
-                   │         │  OpenAI API      │              │
+                   │         │  Google Gemini   │              │
                    │         │  embeddings+LLM  │              │
                    │         └──────────────────┘              │
                    └───────────────────────────────────────────┘
 ```
 
+## Ingestion & Retrieval Pipeline
+
+**Ingestion:** extract text per page (PDF/DOCX/TXT) → split into **token-sized chunks** (`RecursiveCharacterTextSplitter` + `tiktoken` `cl100k_base`, 256 tokens, 40 overlap) → embed with Gemini `gemini-embedding-001` (768-d) → store in ChromaDB.
+
+**Query:**
+
+```
+question ─┬─▶ vector search (ChromaDB, top 30) ─┐
+          │                                     ├─▶ Reciprocal Rank Fusion ─▶ cross-encoder rerank ─▶ top 5 ─▶ LLM
+          └─▶ BM25 keyword search (top 30) ─────┘
+```
+
+- **Token-based chunking** — chunk size is measured in tokens (tiktoken `cl100k_base`, a close approximation of Gemini's tokenizer) instead of characters.
+- **Hybrid search** — dense vectors catch paraphrases; BM25 catches exact terms (IDs, names, acronyms). RRF merges the two ranked lists without needing comparable scores.
+- **Reranking** — a local cross-encoder ([FlashRank](https://github.com/PrithivirajDamodaran/FlashRank), `ms-marco-MiniLM-L-12-v2`, ONNX/CPU, ~22MB) re-scores the fused candidates so only the best 5 reach the LLM. If the reranker fails, retrieval falls back to the fused order.
+- Each stage can be toggled with env vars (`HYBRID_SEARCH_ENABLED`, `RERANKER_ENABLED`) for ablation.
+
+> **Upgrading from an earlier version:** documents indexed before the Gemini/token-chunking changes live in a different vector space. Delete and re-upload them (they are stored in the new `documents_gemini` collection).
+
 ## Prerequisites
 
 - **Docker** & **Docker Compose** (recommended), or Python 3.11+
-- An **OpenAI API key** with access to `text-embedding-3-small` and `gpt-4o-mini`
+- A free **Google Gemini API key** from [Google AI Studio](https://aistudio.google.com/apikey)
 
 ## Quickstart with Docker Compose
 
@@ -50,7 +69,7 @@ Services like GCP, AWS, Azure, etc. were not used as they were requiring credits
 2. **Create your `.env` file:**
    ```bash
    cp .env.example .env
-   # Edit .env and add your OpenAI API key
+   # Edit .env and add your Gemini API key
    ```
 
 3. **Build and run:**
@@ -75,7 +94,7 @@ Services like GCP, AWS, Azure, etc. were not used as they were requiring credits
 2. **Create your `.env` file:**
    ```bash
    cp .env.example .env
-   # Add your OPENAI_API_KEY
+   # Add your GEMINI_API_KEY
    ```
 
 4. **Run the server:**
@@ -201,51 +220,73 @@ uv pip install -r requirements.txt
 pytest tests/ -v
 ```
 
-All tests use mocked OpenAI calls, so no API key is needed to run the test suite.
+All tests fake the Gemini client, so no API key or network is needed to run the suite (the first run downloads the tokenizer data once).
 
-## How to Swap LLM Provider (e.g., Google Gemini)
+## RAGAS Evaluation
 
-To switch from OpenAI `gpt-4o-mini` to Google Gemini:
+The project includes an offline evaluation command that exercises the **same**
+retrieval and answer-generation services used by `POST /query`. It measures:
 
-1. **Install the Google AI SDK:**
-   ```bash
-   pip install google-generativeai
-   ```
+- `faithfulness` — whether the answer is supported by retrieved chunks;
+- `answer_relevancy` — whether the answer addresses the question;
+- `context_precision` and `context_recall` — retrieval quality against a
+  human-verified reference answer; and
+- `answer_correctness` — agreement with that reference answer.
 
-2. **Update `.env`:**
-   ```env
-   GEMINI_API_KEY=your_gemini_api_key
-   ```
+Create a labelled JSON array based on
+[`evaluation/dataset.example.json`](rag-pipeline/evaluation/dataset.example.json).
+Each example requires a `question` and a human-verified `reference`; it may
+also include `document_ids` to evaluate a filtered search.
 
-3. **Modify `app/services/llm.py`:**
-   ```python
-   import google.generativeai as genai
-   from app.config import settings
+```bash
+cd rag-pipeline
+pip install -r requirements.txt
+python scripts/evaluate_rag.py --dataset evaluation/dataset.json
+```
 
-   genai.configure(api_key=settings.GEMINI_API_KEY)
-   model = genai.GenerativeModel("gemini-1.5-flash")
+The command needs the same `GEMINI_API_KEY` as the application because both the
+RAG pipeline and RAGAS's Gemini evaluator make model calls. It prints aggregate
+scores and saves per-example answers, contexts, sources, scores, and evaluator
+reasons in `evaluation/results/` (or the path passed through `--output`).
 
-   def generate_answer(question: str, chunks: list) -> str:
-       context = "\n\n".join([c["text"] for c in chunks])
-       prompt = f"Context:\n{context}\n\nQuestion: {question}"
-       response = model.generate_content(prompt)
-       return response.text
-   ```
+## Gemini Setup & Free-Tier Notes
 
-4. **For embeddings**, you would also swap `retrieval.py` and `ingestion.py` to use a Gemini embedding model or another provider.
+All LLM and embedding calls go through one module, [`app/services/gemini.py`](rag-pipeline/app/services/gemini.py), so swapping providers later only means rewriting that file.
+
+1. Get a free key at <https://aistudio.google.com/apikey> and set `GEMINI_API_KEY` in `.env`.
+2. Verify your key and models: `python scripts/check_gemini.py` (it lists the models your key can use if one of the configured ones isn't available).
+
+- **Embeddings:** `gemini-embedding-001`, truncated to 768 dimensions (Matryoshka) and re-normalised. Documents use task type `RETRIEVAL_DOCUMENT` and queries use `RETRIEVAL_QUERY`.
+- **Generation:** `gemini-2.5-flash-lite` by default (`GEMINI_LLM_MODEL`).
+- **Rate limits:** the free tier is limited (roughly 100 embedding requests/min and 30k tokens/min). Embedding is batched (`EMBEDDING_BATCH_SIZE`) and 429/5xx errors are retried with jittered exponential backoff, so large uploads are slower but succeed. If the quota is still exhausted, `/query` returns `429`.
+- **Changing embedding model or dimension** produces vectors that are incompatible with existing ones. Use a new `CHROMA_COLLECTION` name and re-upload your documents.
 
 ## Environment Variable Reference
 
 | Variable | Default | Description |
 |---|---|---|
-| `OPENAI_API_KEY` | *(required)* | Your OpenAI API key |
+| `GEMINI_API_KEY` | *(required)* | Google AI Studio API key |
+| `GEMINI_LLM_MODEL` | `gemini-2.5-flash-lite` | Model used to generate answers |
+| `GEMINI_EMBEDDING_MODEL` | `gemini-embedding-001` | Model used for embeddings |
+| `EMBEDDING_DIMENSIONS` | `768` | Embedding size (truncated and re-normalised) |
+| `EMBEDDING_BATCH_SIZE` | `50` | Texts per embedding request |
+| `LLM_TEMPERATURE` | `0.3` | Generation temperature |
+| `LLM_MAX_OUTPUT_TOKENS` | `2048` | Max tokens in an answer |
+| `CHROMA_COLLECTION` | `documents_gemini` | ChromaDB collection name (tied to the embedding model) |
 | `CHROMA_PERSIST_DIR` | `./chroma_data` | ChromaDB persistence directory |
 | `UPLOAD_DIR` | `./uploads` | Temporary upload directory |
 | `DATABASE_URL` | `sqlite:///./metadata.db` | SQLAlchemy database URL |
 | `MAX_DOCUMENTS` | `20` | Maximum number of documents allowed |
-| `CHUNK_SIZE` | `500` | Text chunk size (characters) |
-| `CHUNK_OVERLAP` | `50` | Overlap between chunks (characters) |
-| `TOP_K_RESULTS` | `40` | Number of chunks returned per query |
+| `CHUNK_SIZE_TOKENS` | `256` | Chunk size in tokens |
+| `CHUNK_OVERLAP_TOKENS` | `40` | Overlap between chunks in tokens |
+| `TOKENIZER_ENCODING` | `cl100k_base` | tiktoken encoding used to count tokens |
+| `TOP_K_RESULTS` | `5` | Final number of chunks sent to the LLM |
+| `RETRIEVAL_CANDIDATES` | `30` | Candidates fetched from each retriever before fusion |
+| `HYBRID_SEARCH_ENABLED` | `true` | Combine vector + BM25 search (set `false` for vector only) |
+| `RRF_K` | `60` | Reciprocal Rank Fusion constant |
+| `RERANKER_ENABLED` | `true` | Rerank fused candidates with a cross-encoder |
+| `RERANKER_MODEL` | `ms-marco-MiniLM-L-12-v2` | FlashRank model name |
+| `RERANKER_CACHE_DIR` | `./.flashrank_cache` | Where the reranker model is cached |
 
 ## Known Limitations
 

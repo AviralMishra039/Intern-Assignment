@@ -6,12 +6,11 @@ from typing import Dict, List, Tuple
 import fitz  # PyMuPDF
 from docx import Document as DocxDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from openai import OpenAI
 
 from app.config import settings
 from app.database import get_chroma_collection
-
-client = OpenAI(api_key=settings.OPENAI_API_KEY)
+from app.services.gemini import embed_documents
+from app.services.lexical import invalidate_index
 
 
 # ---------------------------------------------------------------------------
@@ -65,15 +64,33 @@ def extract_text_from_txt(file_path: str) -> Tuple[List[Dict], int]:
 # ---------------------------------------------------------------------------
 
 
+_splitter = None
+
+
+def _get_splitter() -> RecursiveCharacterTextSplitter:
+    """Return a (lazily created, cached) token-aware recursive splitter.
+
+    Length is measured in tokens with tiktoken's cl100k_base. Gemini doesn't
+    publish an offline tokenizer, so this is an approximation of its token count
+    (close enough for sizing chunks). The recursive strategy still prefers
+    paragraph > line > sentence > word boundaries.
+    """
+    global _splitter
+    if _splitter is None:
+        _splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+            encoding_name=settings.TOKENIZER_ENCODING,
+            chunk_size=settings.CHUNK_SIZE_TOKENS,
+            chunk_overlap=settings.CHUNK_OVERLAP_TOKENS,
+        )
+    return _splitter
+
+
 def chunk_text(pages: List[Dict]) -> List[Dict]:
-    """Split extracted pages into smaller chunks with metadata.
+    """Split extracted pages into token-sized chunks with metadata.
 
     Each chunk retains the page_number from which it was extracted.
     """
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=settings.CHUNK_SIZE,
-        chunk_overlap=settings.CHUNK_OVERLAP,
-    )
+    splitter = _get_splitter()
 
     chunks = []
     for page in pages:
@@ -94,18 +111,8 @@ def chunk_text(pages: List[Dict]) -> List[Dict]:
 
 
 def generate_embeddings(texts: List[str]) -> List[List[float]]:
-    """Generate embeddings for a list of texts via OpenAI text-embedding-3-small."""
-    embeddings = []
-    # OpenAI has a hard limit of 2048 inputs per request. We batch at 1000 for safety.
-    batch_size = 1000
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i:i + batch_size]
-        response = client.embeddings.create(
-            input=batch,
-            model="text-embedding-3-small",
-        )
-        embeddings.extend([item.embedding for item in response.data])
-    return embeddings
+    """Generate document embeddings via Gemini (batched, with retry on rate limits)."""
+    return embed_documents(texts)
 
 
 # ---------------------------------------------------------------------------
@@ -168,6 +175,8 @@ def process_document(
         embeddings=embeddings,
         metadatas=metadatas,
     )
+    # Keyword index is built lazily from the collection; mark it stale.
+    invalidate_index()
 
     # 5. Clean up uploaded file
     if os.path.exists(file_path):

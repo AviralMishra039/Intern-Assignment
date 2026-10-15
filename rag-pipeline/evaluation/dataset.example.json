@@ -1,0 +1,7 @@
+[
+  {
+    "question": "Replace this with a question your uploaded documents can answer.",
+    "reference": "Replace this with the human-verified ideal answer.",
+    "document_ids": [1]
+  }
+]

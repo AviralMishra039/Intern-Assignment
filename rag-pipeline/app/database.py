@@ -61,4 +61,7 @@ chroma_client = chromadb.PersistentClient(path=settings.CHROMA_PERSIST_DIR)
 
 def get_chroma_collection():
     """Return (or create) the main documents collection in ChromaDB."""
-    return chroma_client.get_or_create_collection(name="documents")
+    return chroma_client.get_or_create_collection(
+        name=settings.CHROMA_COLLECTION,
+        metadata={"hnsw:space": "cosine"},
+    )

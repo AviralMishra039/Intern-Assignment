@@ -1,13 +1,93 @@
-"""Retrieval service — embed a question and find relevant chunks from ChromaDB."""
+"""Retrieval service — hybrid search (vector + BM25) fused with RRF, then reranked.
 
+Pipeline:
+    1. Dense retrieval: embed the question, query ChromaDB (semantic matches).
+    2. Sparse retrieval: BM25 keyword search (exact terms, IDs, acronyms).
+    3. Reciprocal Rank Fusion merges both ranked lists without needing their
+       (incomparable) scores to be normalised.
+    4. A cross-encoder reranks the fused candidates; the top_k go to the LLM.
+
+Each stage can be switched off via settings (HYBRID_SEARCH_ENABLED,
+RERANKER_ENABLED), which makes ablation / evaluation straightforward.
+"""
+
+import logging
 from typing import Dict, List, Optional
-
-from openai import OpenAI
 
 from app.config import settings
 from app.database import get_chroma_collection
+from app.services.gemini import embed_query
+from app.services.lexical import bm25_search
+from app.services.reranker import rerank
 
-client = OpenAI(api_key=settings.OPENAI_API_KEY)
+logger = logging.getLogger(__name__)
+
+
+def _build_where(document_ids: Optional[List[int]]) -> Optional[Dict]:
+    """Build a ChromaDB where-filter for the given document IDs."""
+    if not document_ids:
+        return None
+    if len(document_ids) == 1:
+        return {"document_id": document_ids[0]}
+    return {"$or": [{"document_id": doc_id} for doc_id in document_ids]}
+
+
+def _to_candidate(chunk_id: str, text: str, metadata: Dict) -> Dict:
+    return {
+        "id": chunk_id,
+        "text": text,
+        "document_id": metadata["document_id"],
+        "filename": metadata["filename"],
+        "page_number": metadata["page_number"],
+    }
+
+
+def _vector_search(
+    collection, question: str, top_n: int, document_ids: Optional[List[int]]
+) -> List[Dict]:
+    """Dense retrieval: nearest chunks to the question embedding."""
+    query_params = {
+        "query_embeddings": [embed_query(question)],
+        "n_results": top_n,
+    }
+    where = _build_where(document_ids)
+    if where:
+        query_params["where"] = where
+
+    results = collection.query(**query_params)
+
+    candidates: List[Dict] = []
+    if results and results.get("documents") and results["documents"][0]:
+        for chunk_id, text, metadata in zip(
+            results["ids"][0], results["documents"][0], results["metadatas"][0]
+        ):
+            candidates.append(_to_candidate(chunk_id, text, metadata))
+    return candidates
+
+
+def reciprocal_rank_fusion(
+    ranked_lists: List[List[Dict]], k: int = settings.RRF_K
+) -> List[Dict]:
+    """Fuse several ranked candidate lists with Reciprocal Rank Fusion.
+
+    score(chunk) = sum over lists of 1 / (k + rank), rank starting at 1.
+    Chunks ranked highly by multiple retrievers rise to the top. Returns the
+    unique candidates ordered by fused score (a "rrf_score" key is added).
+    """
+    scores: Dict[str, float] = {}
+    by_id: Dict[str, Dict] = {}
+    for ranked in ranked_lists:
+        for rank, candidate in enumerate(ranked, start=1):
+            cid = candidate["id"]
+            scores[cid] = scores.get(cid, 0.0) + 1.0 / (k + rank)
+            by_id.setdefault(cid, candidate)
+
+    fused = []
+    for cid in sorted(scores, key=scores.get, reverse=True):
+        item = dict(by_id[cid])
+        item["rrf_score"] = scores[cid]
+        fused.append(item)
+    return fused
 
 
 def retrieve_chunks(
@@ -23,45 +103,34 @@ def retrieve_chunks(
         top_k: Number of results to return.
 
     Returns:
-        A list of dicts with keys: text, document_id, filename, page_number.
+        A list of dicts with keys: text, document_id, filename, page_number
+        (plus id and the stage scores), best first.
     """
-    # 1. Embed the question
-    response = client.embeddings.create(
-        input=[question],
-        model="text-embedding-3-small",
-    )
-    query_embedding = response.data[0].embedding
-
-    # 2. Build optional where-filter for ChromaDB
     collection = get_chroma_collection()
-    query_params = {
-        "query_embeddings": [query_embedding],
-        "n_results": top_k,
-    }
+    total_chunks = collection.count()
+    if total_chunks == 0:
+        return []
 
-    if document_ids:
-        if len(document_ids) == 1:
-            query_params["where"] = {"document_id": document_ids[0]}
-        else:
-            query_params["where"] = {
-                "$or": [{"document_id": doc_id} for doc_id in document_ids]
-            }
+    n_candidates = min(settings.RETRIEVAL_CANDIDATES, total_chunks)
 
-    # 3. Query ChromaDB
-    results = collection.query(**query_params)
+    # 1. Dense retrieval
+    ranked_lists = [_vector_search(collection, question, n_candidates, document_ids)]
 
-    # 4. Format results
-    chunks = []
-    if results and results["documents"]:
-        for i, doc_text in enumerate(results["documents"][0]):
-            metadata = results["metadatas"][0][i]
-            chunks.append(
-                {
-                    "text": doc_text,
-                    "document_id": metadata["document_id"],
-                    "filename": metadata["filename"],
-                    "page_number": metadata["page_number"],
-                }
-            )
+    # 2. Sparse retrieval (BM25) — optional
+    if settings.HYBRID_SEARCH_ENABLED:
+        lexical_hits = bm25_search(collection, question, n_candidates, document_ids)
+        ranked_lists.append(
+            [_to_candidate(h["id"], h["text"], h["metadata"]) for h in lexical_hits]
+        )
 
-    return chunks
+    # 3. Fuse (a single list passes through unchanged, in its original order)
+    candidates = reciprocal_rank_fusion(ranked_lists)
+
+    # 4. Rerank with a cross-encoder — optional, degrade gracefully on failure
+    if settings.RERANKER_ENABLED and candidates:
+        try:
+            return rerank(question, candidates, top_k)
+        except Exception:
+            logger.exception("Reranker failed; falling back to fused ordering.")
+
+    return candidates[:top_k]

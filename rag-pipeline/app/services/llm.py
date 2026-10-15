@@ -1,12 +1,8 @@
-"""LLM service — build prompts and generate answers via OpenAI gpt-4o-mini."""
+"""LLM service — build prompts and generate answers via Google Gemini."""
 
 from typing import Dict, List
 
-from openai import OpenAI
-
-from app.config import settings
-
-client = OpenAI(api_key=settings.OPENAI_API_KEY)
+from app.services.gemini import generate_text
 
 SYSTEM_PROMPT = (
     "You are a helpful assistant. Answer questions strictly based "
@@ -37,14 +33,4 @@ def generate_answer(question: str, chunks: List[Dict]) -> str:
 
     user_prompt = f"Context:\n{context}\n\nQuestion: {question}"
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.3,
-        max_tokens=1024,
-    )
-
-    return response.choices[0].message.content
+    return generate_text(SYSTEM_PROMPT, user_prompt)

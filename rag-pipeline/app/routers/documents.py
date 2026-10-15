@@ -15,6 +15,7 @@ from app.models.schemas import (
     DocumentResponse,
 )
 from app.services.ingestion import process_document
+from app.services.lexical import invalidate_index
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -180,6 +181,7 @@ def delete_document(document_id: int, db: Session = Depends(get_db)):
             collection.delete(ids=chunk_ids)
         except Exception:
             pass  # Best-effort deletion from vector store
+        invalidate_index()
 
     # Remove from metadata DB
     db.delete(doc)

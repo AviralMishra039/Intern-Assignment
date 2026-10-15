@@ -3,11 +3,18 @@ uvicorn[standard]
 python-multipart
 sqlalchemy
 chromadb
-openai
-langchain
-langchain-text-splitters
+google-genai
+tenacity
+# RAGAS 0.4 imports Vertex models from the pre-1.0 LangChain Community package.
+langchain>=0.3,<0.4
+langchain-text-splitters>=0.3,<0.4
+langchain-community>=0.3,<0.4
+tiktoken
+rank-bm25
+flashrank
 pymupdf
 python-docx
 python-dotenv
 pytest
 httpx
+ragas>=0.4,<0.5

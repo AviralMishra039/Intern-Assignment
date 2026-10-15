@@ -26,6 +26,7 @@ env/
 chroma_data/
 uploads/
 metadata.db
+.flashrank_cache/
 
 # OS
 .DS_Store
@@ -35,4 +36,7 @@ Thumbs.db
 .pytest_cache/
 htmlcov/
 .coverage
+test_metadata.db
+.test-tmp/
 Project_Explanation.md
+evaluation/results/
