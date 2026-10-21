@@ -97,7 +97,13 @@ question ─┬─▶ vector search (ChromaDB, top 30) ─┐
    # Add your GEMINI_API_KEY
    ```
 
-4. **Run the server:**
+3. **Run the Interactive Gradio Studio (Recommended for Testing & Demos):**
+   ```bash
+   python gui.py
+   # Opens interactive UI at http://127.0.0.1:7860
+   ```
+
+4. **Or run the FastAPI Backend:**
    ```bash
    uvicorn app.main:app --reload --port 8000
    ```
@@ -222,32 +228,35 @@ pytest tests/ -v
 
 All tests fake the Gemini client, so no API key or network is needed to run the suite (the first run downloads the tokenizer data once).
 
-## RAGAS Evaluation
+## Evaluation & Ablation Study (RAGAS)
 
-The project includes an offline evaluation command that exercises the **same**
-retrieval and answer-generation services used by `POST /query`. It measures:
+The project includes an evaluation and ablation suite in [`evals/`](rag-pipeline/evals/) measuring retrieval and generation performance across three architectural configurations:
+1. **Vector Only (Baseline)** — Standard dense embedding similarity search.
+2. **Hybrid Search** — Dense vector + BM25 sparse keyword retrieval fused with Reciprocal Rank Fusion (RRF).
+3. **Hybrid + Cross-Encoder Reranker** — Fused candidate retrieval reranked via FlashRank (`ms-marco-MiniLM-L-12-v2`).
 
-- `faithfulness` — whether the answer is supported by retrieved chunks;
-- `answer_relevancy` — whether the answer addresses the question;
-- `context_precision` and `context_recall` — retrieval quality against a
-  human-verified reference answer; and
-- `answer_correctness` — agreement with that reference answer.
+### Evaluated Metrics
+- **Retrieval Metrics**:
+  - `Context Precision`: Signal-to-noise ratio in retrieved context chunks.
+  - `Context Recall`: Ground-truth coverage in retrieved contexts.
+  - `Keyword Hit Rate & MRR`: Exact-code and acronym retrieval accuracy.
+- **Generation Metrics**:
+  - `Faithfulness`: Hallucination check ensuring answers are strictly grounded in context.
+  - `Answer Relevancy`: Measures how directly the response addresses the prompt.
 
-Create a labelled JSON array based on
-[`evaluation/dataset.example.json`](rag-pipeline/evaluation/dataset.example.json).
-Each example requires a `question` and a human-verified `reference`; it may
-also include `document_ids` to evaluate a filtered search.
+### Running the Evaluation
 
 ```bash
 cd rag-pipeline
-pip install -r requirements.txt
-python scripts/evaluate_rag.py --dataset evaluation/dataset.json
+
+# Run full evaluation with Google Gemini + RAGAS (requires GEMINI_API_KEY):
+python evals/eval_runner.py
+
+# Run offline ablation (runs real retrieval pipeline & deterministic metrics without API calls):
+python evals/eval_runner.py --offline
 ```
 
-The command needs the same `GEMINI_API_KEY` as the application because both the
-RAG pipeline and RAGAS's Gemini evaluator make model calls. It prints aggregate
-scores and saves per-example answers, contexts, sources, scores, and evaluator
-reasons in `evaluation/results/` (or the path passed through `--output`).
+The runner automatically outputs a markdown comparison table and exports detailed per-sample predictions to `evals/results/latest_ablation_results.json`.
 
 ## Gemini Setup & Free-Tier Notes
 
@@ -257,7 +266,7 @@ All LLM and embedding calls go through one module, [`app/services/gemini.py`](ra
 2. Verify your key and models: `python scripts/check_gemini.py` (it lists the models your key can use if one of the configured ones isn't available).
 
 - **Embeddings:** `gemini-embedding-001`, truncated to 768 dimensions (Matryoshka) and re-normalised. Documents use task type `RETRIEVAL_DOCUMENT` and queries use `RETRIEVAL_QUERY`.
-- **Generation:** `gemini-2.5-flash-lite` by default (`GEMINI_LLM_MODEL`).
+- **Generation:** `gemini-3.8-flash` by default (`GEMINI_LLM_MODEL`).
 - **Rate limits:** the free tier is limited (roughly 100 embedding requests/min and 30k tokens/min). Embedding is batched (`EMBEDDING_BATCH_SIZE`) and 429/5xx errors are retried with jittered exponential backoff, so large uploads are slower but succeed. If the quota is still exhausted, `/query` returns `429`.
 - **Changing embedding model or dimension** produces vectors that are incompatible with existing ones. Use a new `CHROMA_COLLECTION` name and re-upload your documents.
 
@@ -266,7 +275,7 @@ All LLM and embedding calls go through one module, [`app/services/gemini.py`](ra
 | Variable | Default | Description |
 |---|---|---|
 | `GEMINI_API_KEY` | *(required)* | Google AI Studio API key |
-| `GEMINI_LLM_MODEL` | `gemini-2.5-flash-lite` | Model used to generate answers |
+| `GEMINI_LLM_MODEL` | `gemini-3.8-flash` | Model used to generate answers |
 | `GEMINI_EMBEDDING_MODEL` | `gemini-embedding-001` | Model used for embeddings |
 | `EMBEDDING_DIMENSIONS` | `768` | Embedding size (truncated and re-normalised) |
 | `EMBEDDING_BATCH_SIZE` | `50` | Texts per embedding request |

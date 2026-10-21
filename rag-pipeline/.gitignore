@@ -38,5 +38,12 @@ htmlcov/
 .coverage
 test_metadata.db
 .test-tmp/
-Project_Explanation.md
 evaluation/results/
+
+# Personal Notes / Scripts
+[Vv]ideo_[Ss]cript.md
+[Pp]roject_[Ee]xplanation.md
+Video_Script.md
+video_script.md
+Project_Explanation.md
+project_explanation.md

@@ -41,15 +41,18 @@ def _get_client() -> genai.Client:
 
 
 def _is_retryable(exc: BaseException) -> bool:
-    """Retry rate limits (429) and transient server errors (5xx)."""
+    """Retry rate limits (429) and transient server errors (500, 502, 503, 504)."""
+    code = getattr(exc, "code", None)
+    if code in (429, 500, 502, 503, 504):
+        return True
     if isinstance(exc, errors.ServerError):
         return True
-    return isinstance(exc, errors.ClientError) and getattr(exc, "code", None) == 429
+    return isinstance(exc, errors.ClientError) and code == 429
 
 
 _retry_policy = retry(
     retry=retry_if_exception(_is_retryable),
-    wait=wait_random_exponential(multiplier=2, max=60),
+    wait=wait_random_exponential(multiplier=1.5, max=15),
     stop=stop_after_attempt(6),
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
@@ -98,10 +101,9 @@ def embed_query(text: str) -> List[float]:
 
 
 @_retry_policy
-def generate_text(system_prompt: str, user_prompt: str) -> str:
-    """Generate a completion from the configured Gemini model."""
+def _call_generate_content(model: str, system_prompt: str, user_prompt: str) -> str:
     response = _get_client().models.generate_content(
-        model=settings.GEMINI_LLM_MODEL,
+        model=model,
         contents=user_prompt,
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
@@ -109,8 +111,35 @@ def generate_text(system_prompt: str, user_prompt: str) -> str:
             max_output_tokens=settings.LLM_MAX_OUTPUT_TOKENS,
         ),
     )
-    text = response.text
-    if not text:
-        logger.warning("Gemini returned no text (finish_reason may be SAFETY/MAX_TOKENS).")
-        return "The model returned an empty response. Please try rephrasing your question."
-    return text
+    return response.text or ""
+
+
+def generate_text(system_prompt: str, user_prompt: str, model_name: Optional[str] = None) -> str:
+    """Generate a completion with automatic fallback if a model experiences 503 high demand."""
+    primary_model = model_name or settings.GEMINI_LLM_MODEL
+    fallback_models = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]
+
+    candidate_models = [primary_model] + [m for m in fallback_models if m != primary_model]
+
+    last_error = None
+    for model in candidate_models:
+        try:
+            text = _call_generate_content(model, system_prompt, user_prompt)
+            if not text:
+                logger.warning("Model %s returned empty text.", model)
+                return "The model returned an empty response. Please try rephrasing your question."
+            return text
+        except Exception as exc:
+            code = getattr(exc, "code", None)
+            if code in (503, 500, 502, 504, 429):
+                logger.warning("Model %s failed with %s. Attempting fallback...", model, exc)
+                last_error = exc
+                continue
+            raise
+
+    if last_error:
+        raise last_error
+    return "Generation failed across all models."
+
+
+generate_text.retry = _call_generate_content.retry

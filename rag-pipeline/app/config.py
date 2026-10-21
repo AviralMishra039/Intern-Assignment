@@ -16,7 +16,7 @@ class Settings:
 
     # --- Google Gemini (LLM + embeddings) ---
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_LLM_MODEL: str = os.getenv("GEMINI_LLM_MODEL", "gemini-2.5-flash-lite")
+    GEMINI_LLM_MODEL: str = os.getenv("GEMINI_LLM_MODEL", "gemini-3.8-flash")
     GEMINI_EMBEDDING_MODEL: str = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
     # gemini-embedding-001 outputs 3072-d by default; Matryoshka training lets us
     # truncate to 768-d with little quality loss and 4x less storage.

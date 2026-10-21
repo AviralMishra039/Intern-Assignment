@@ -1,0 +1,24 @@
+# Environment
+.env
+*.env
+
+# Personal / Private files
+[Vv]ideo_[Ss]cript.md
+[Pp]roject_[Ee]xplanation.md
+Video_Script.md
+video_script.md
+Project_Explanation.md
+project_explanation.md
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Data & caches
+chroma_data/
+.flashrank_cache/
+metadata.db
+__pycache__/
+*.pyc
+.pytest_cache/

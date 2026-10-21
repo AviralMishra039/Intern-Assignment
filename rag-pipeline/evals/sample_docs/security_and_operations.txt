@@ -1,0 +1,33 @@
+# CloudScale Technologies - Corporate Security & Operations Policy 2024
+
+## Section 1: Authentication and Access Control
+All production systems mandate Multi-Factor Authentication (MFA) utilizing FIDO2 WebAuthn security keys or Time-based One-Time Passwords (TOTP). SMS-based 2FA is strictly prohibited under directive SEC-AUTH-401 due to SIM-swapping vulnerabilities. Role-Based Access Control (RBAC) is enforced through Okta directory groups, and administrative privileges require Just-In-Time (JIT) access approval with a maximum session lease of 4 hours.
+
+Service accounts must authenticate via mutual TLS (mTLS) with certificates issued by HashiCorp Vault PKI. Any service account credential older than 90 days is automatically quarantined by daemon AUTH-ROTATOR-99.
+
+## Section 2: Incident Response and Error Classifications
+The Security Operations Center (SOC) operates 24/7/365 across 3 global rotation zones (Austin, Dublin, Singapore). Incidents are triaged using the CVSS v3.1 framework and classified into four severity tiers:
+
+- Severity 1 (Critical): Active data exfiltration or total platform outage. Mean Time to Respond (MTTR) SLA is 15 minutes. Escalation code ERR-CRIT-911 triggers automated PagerDuty bridge calls to VP of Engineering.
+- Severity 2 (High): Compromise of non-production infrastructure or degradation affecting >25% of active sessions. MTTR SLA is 1 hour.
+- Severity 3 (Medium): Software vulnerability without known public exploit, or isolated service failures. MTTR SLA is 24 hours.
+- Severity 4 (Low): Informational alerts and minor compliance discrepancies. SLA is 7 business days.
+
+Forensic disk images must be captured using tool FORENSIC-DD-v2 before any compromised node is terminated or recycled.
+
+## Section 3: Data Retention and Cryptographic Standards
+Data at rest within PostgreSQL RDS databases and Amazon S3 buckets must be encrypted using AES-256-GCM with customer-managed keys (CMK) stored in AWS KMS. Key rotation occurs automatically every 365 calendar days under policy CRYPT-ROT-2024.
+
+Customer telemetry and query logs are preserved in warm storage for exactly 180 days before transition to Glacier Cold Tier, where they remain until the 7-year regulatory retention ceiling is reached. Permanent deletion requires dual-authorization cryptographic erasure verified by the Chief Information Security Officer (CISO).
+
+## Section 4: Employee Onboarding and Device Provisioning
+New engineering hires receive an Apple MacBook Pro M3 provisioned with Jamf Pro mobile device management (MDM). Endpoint protection is provided by CrowdStrike Falcon with kernel-level sensor enabled. 
+
+During offboarding (governed by HR-OFFBOARD-PROC), network access is severed within 15 minutes of employee status change in Workday. Physical hardware must be shipped back within 14 calendar days using prepaid logistics code RETURN-LOGISTICS-77.
+
+## Section 5: Financial Operations and Vendor Procurement
+Annual software licenses exceeding $50,000 require written sign-off from both the Department Head and the Chief Financial Officer (CFO). Purchase orders are tracked in NetSuite under procurement code PO-PROCURE-2024. The total cloud infrastructure budget for fiscal year 2024 is capped at $4.2 million, distributed as:
+- AWS Compute (EC2, EKS): $2.1 million
+- Database & Storage (RDS, S3, Aurora): $1.2 million
+- Networking & Data Transfer: $600,000
+- Third-party SaaS tools: $300,000

@@ -1,0 +1,72 @@
+[
+  {
+    "id": "q1_exact_code_auth",
+    "question": "What is the directive number that prohibits SMS-based 2FA?",
+    "ground_truth": "SMS-based 2FA is strictly prohibited under directive SEC-AUTH-401 due to SIM-swapping vulnerabilities.",
+    "category": "exact_code_lookup",
+    "reference_keywords": ["SEC-AUTH-401", "SMS-based 2FA", "prohibited"]
+  },
+  {
+    "id": "q2_exact_code_incident",
+    "question": "What escalation code is triggered during a Severity 1 incident and what action does it cause?",
+    "ground_truth": "The escalation code ERR-CRIT-911 triggers automated PagerDuty bridge calls to the VP of Engineering.",
+    "category": "exact_code_lookup",
+    "reference_keywords": ["ERR-CRIT-911", "PagerDuty", "VP of Engineering"]
+  },
+  {
+    "id": "q3_daemon_lookup",
+    "question": "Which daemon quarantines expired service account credentials and after how many days?",
+    "ground_truth": "Daemon AUTH-ROTATOR-99 automatically quarantines any service account credential older than 90 days.",
+    "category": "exact_code_lookup",
+    "reference_keywords": ["AUTH-ROTATOR-99", "90 days", "quarantined"]
+  },
+  {
+    "id": "q4_forensic_tool",
+    "question": "Which specific tool must be used to capture forensic disk images before compromised nodes are recycled?",
+    "ground_truth": "Forensic disk images must be captured using tool FORENSIC-DD-v2 before terminating or recycling any node.",
+    "category": "exact_code_lookup",
+    "reference_keywords": ["FORENSIC-DD-v2", "disk images", "compromised node"]
+  },
+  {
+    "id": "q5_semantic_auth_policy",
+    "question": "How does the organization protect user logins and what multi-factor options are allowed?",
+    "ground_truth": "All production systems mandate Multi-Factor Authentication utilizing FIDO2 WebAuthn security keys or Time-based One-Time Passwords (TOTP). Role-Based Access Control (RBAC) is enforced through Okta.",
+    "category": "semantic_reasoning",
+    "reference_keywords": ["FIDO2 WebAuthn", "TOTP", "RBAC", "Okta"]
+  },
+  {
+    "id": "q6_data_retention_lifecycle",
+    "question": "How long are customer telemetry and query logs retained before being moved to cold storage, and what is the final retention period?",
+    "ground_truth": "Logs are kept in warm storage for 180 days before moving to Glacier Cold Tier, where they remain until reaching the 7-year regulatory retention ceiling.",
+    "category": "semantic_reasoning",
+    "reference_keywords": ["180 days", "Glacier Cold Tier", "7-year"]
+  },
+  {
+    "id": "q7_offboarding_timeline",
+    "question": "What is the timeline for cutting network access and returning equipment during employee departure?",
+    "ground_truth": "Under HR-OFFBOARD-PROC, network access is severed within 15 minutes in Workday, and physical hardware must be returned within 14 calendar days using code RETURN-LOGISTICS-77.",
+    "category": "semantic_reasoning",
+    "reference_keywords": ["15 minutes", "14 calendar days", "RETURN-LOGISTICS-77"]
+  },
+  {
+    "id": "q8_cloud_budget_split",
+    "question": "What is the cloud infrastructure budget limit for 2024 and how much of it is allocated for AWS compute?",
+    "ground_truth": "The total cloud infrastructure budget is capped at $4.2 million for fiscal year 2024, with $2.1 million allocated specifically to AWS Compute (EC2, EKS).",
+    "category": "fact_synthesis",
+    "reference_keywords": ["$4.2 million", "$2.1 million", "AWS Compute"]
+  },
+  {
+    "id": "q9_admin_lease_duration",
+    "question": "What is the maximum allowed duration for an administrative session lease under JIT access?",
+    "ground_truth": "Administrative privileges require Just-In-Time (JIT) access approval with a maximum session lease duration of 4 hours.",
+    "category": "fact_synthesis",
+    "reference_keywords": ["4 hours", "Just-In-Time", "JIT"]
+  },
+  {
+    "id": "q10_negative_unanswerable",
+    "question": "What is the reimbursement limit for home office ergonomic chairs and monitors?",
+    "ground_truth": "I could not find relevant information in the uploaded documents.",
+    "category": "negative_rejection",
+    "reference_keywords": ["could not find relevant information"]
+  }
+]

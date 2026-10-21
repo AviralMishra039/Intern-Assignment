@@ -1,6 +1,6 @@
 """LLM service — build prompts and generate answers via Google Gemini."""
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from app.services.gemini import generate_text
 
@@ -12,12 +12,13 @@ SYSTEM_PROMPT = (
 )
 
 
-def generate_answer(question: str, chunks: List[Dict]) -> str:
+def generate_answer(question: str, chunks: List[Dict], model_name: Optional[str] = None) -> str:
     """Generate an LLM answer grounded in the retrieved chunks.
 
     Args:
         question: The user's question.
         chunks: List of dicts with at least a "text" key.
+        model_name: Optional override for the Gemini model.
 
     Returns:
         The assistant's answer string.
@@ -33,4 +34,4 @@ def generate_answer(question: str, chunks: List[Dict]) -> str:
 
     user_prompt = f"Context:\n{context}\n\nQuestion: {question}"
 
-    return generate_text(SYSTEM_PROMPT, user_prompt)
+    return generate_text(SYSTEM_PROMPT, user_prompt, model_name=model_name)
